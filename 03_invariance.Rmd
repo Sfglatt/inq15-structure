@@ -1,0 +1,133 @@
+---
+title: "03_invariance"
+author: "Sglatt"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+This script tests configural and metric invariance between suicide risk and non-risk groups within an exploratory graph analysis framework.  
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Data
+```{r data}
+Data1 <- read.csv("01_output/863_scored_data.csv")
+
+# Isolate data for invariance tests
+Data_inv <- dplyr::select(
+  Data1,
+  INQ_1, INQ_2, INQ_3, INQ_4, INQ_5, INQ_6,
+  INQ_7_rU, INQ_8_rU, INQ_9, INQ_10_rU, INQ_11, INQ_12, INQ_13_rU, INQ_14_rU, INQ_15_rU,
+  sui_risk_check
+)
+```
+
+# Configural invariance testing with riEGA
+Risk group: SBQ-R scores > 6
+No risk group: SBQ-R scores < 7
+First, estimate network for each group (standard and bootstrapped). 
+Then compare networks using normalized mutual information (NMI) to assess configural invariance.
+
+## Risk group models
+```{r risk group}
+# random-intercept EGA with SBQ-R scores > 6
+ega.risk <- riEGA(
+  data = Data_inv[Data_inv$sui_risk_check == "1", 1:15],
+  model = "glasso",
+  algorithm = "walktrap",
+  EGA.type = "riEGA",
+  plot.EGA = FALSE
+)
+
+# Plot EGA
+plot(ega.risk, title = "ega.risk")
+
+# Bootstrapped riEGA with SBQ-R scores > 6
+riEGA.risk.boot <- bootEGA(
+  data = Data_inv[Data_inv$sui_risk_check == "1", 1:15],
+  corr = "auto",
+  model = "glasso",
+  algorithm = "walktrap",
+  uni.method = "louvain",
+  iter = 1000,
+  type = "parametric",
+  ncores = 4,
+  typicalStructure = TRUE,
+  plot.typicalStructure = TRUE,
+  seed = 123456,
+  verbose = TRUE,
+)
+
+summary(riEGA.risk.boot)
+riEGA.risk.boot_dim <- itemStability(riEGA.risk.boot)
+riEGA.risk.boot_dim
+```
+
+## Non-risk group models
+```{r non risk group}
+# riEGA with SBQ-R scores < 7
+ega.no.risk <- riEGA(
+  data = Data_inv[Data_inv$sui_risk_check == "0", 1:15],
+  model = "glasso",
+  algorithm = "walktrap",
+  EGA.type = "riEGA",
+  plot.EGA = FALSE
+)
+
+# Plot EGA
+plot(ega.no.risk, title = "ega.no.risk")
+
+# Bootstrapped riEGA with SBQ-R scores < 7
+riEGA.no.risk.boot <- bootEGA(
+  data = Data_inv[Data_inv$sui_risk_check == "0", 1:15],
+  corr = "auto",
+  model = "glasso",
+  algorithm = "walktrap",
+  uni.method = "louvain",
+  iter = 1000,
+  type = "parametric",
+  ncores = 4,
+  typicalStructure = TRUE,
+  plot.typicalStructure = TRUE,
+  seed = 123456,
+  verbose = TRUE,
+)
+
+summary(riEGA.no.risk.boot)
+riEGA.no.risk.boot_dim <- itemStability(riEGA.no.risk.boot)
+riEGA.no.risk.boot_dim
+```
+
+## Risk/non-risk configural invariance 
+```{r configural invariance}
+# Compute the normalized mutual information between the groups
+# 1 =  identical (configural invariance)
+igraph::compare(riEGA.no.risk.boot$wc,
+  riEGA.risk.boot$wc,
+  method = "nmi"
+)
+```
+
+# Metric invariance testing
+```{r metric invariance}
+inq_met <- invariance(
+  data = Data_inv[, 1:15],
+  groups = Data_inv$sui_risk_check,
+  iter = 1000,
+  configural.threshold = 0.7,
+  configural.type = "parametric",
+  corr = "auto",
+  model = "glasso",
+  algorithm = "walktrap",
+  uni.method = "louvain",
+  ncores = 4,
+  seed = 123456,
+  verbose = TRUE,
+)
+
+inq_met
+inq_met_fig <- plot(inq_met)
+```
+

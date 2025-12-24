@@ -1,0 +1,401 @@
+---
+title: "02_dimensions"
+author: "Sglatt"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+This script applies exploratory graph analysis (EGA) and random-intercept EGA (riEGA) on the Interpersonal Needs Questionnaire-15 (INQ-15).
+The INQ-15 has two subscales: Perceived burdensomeness - 6 items, all regularly keyed, and Thwarted belongingness - 9 items, 6 of which are reverse scored.
+The riEGA is applied to account for the method variance introduced by the reverse scored items.
+Items 9, 11, and 12 are excluded because of high (EGA-identified) dimension correlations (> .70) with the other thwarted belongingness items.
+
+- EGA on all 15 items 
+- EGA on 12 items (excluding items 9, 11, and 12)
+- riEGA on all 15 items
+- riEGA on 12 items (excluding items 9, 11, and 12)
+
+For sensitivity, compute the Triangulated Maximally Filtered Graph (TMFG) EGA.
+When EGA makes mistakes it does so by overfactoring, while when TMFG makes mistakes it does so by underfactoring. 
+When the methods agree it shows that the structure is likely the optimal solution.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Packages
+```{r package}
+if (!require("EGAnet")) {
+  install.packages("EGAnet")
+  require("EGAnet")
+}
+if (!require("jmv")) {
+  install.packages("jmv")
+  require("jmv")
+}
+if (!require("psych")) {
+  install.packages("psych")
+  require("psych")
+}
+if (!require("ggplot2")) {
+  install.packages("ggplot2")
+  require("ggplot2")
+}
+if (!require("dplyr")) {
+  install.packages("dplyr")
+  require("dplyr")
+}
+```
+
+# Data
+```{r Data}
+Data1 <- read.csv("01_output/863_scored_data.csv")
+colnames(Data1)
+# this contains 863 participants with 15 INQ items
+## _r = reverse scored
+## _rU = unrecoded reversed
+
+# From Data1, make a dataframe for random-intercept EGA (all PB item 1-6, and all TB items unrecoded where applicable)
+Data2 <- Data1 %>%
+  dplyr::select(
+    # PB items (1–6)
+    INQ_1, INQ_2, INQ_3, INQ_4, INQ_5, INQ_6,
+    # TB items (7–15),
+    INQ_7_rU, INQ_8_rU, INQ_9, INQ_10_rU, INQ_11, INQ_12, INQ_13_rU, INQ_14_rU, INQ_15_rU
+  )
+
+# Make a dataframe for second random-intercept EGA excluding the TB items 9, 11, and 1
+Data3 <- Data1 %>%
+  dplyr::select(
+    # PB items (1–6)
+    INQ_1, INQ_2, INQ_3, INQ_4, INQ_5, INQ_6,
+    # TB items (7–15),
+    INQ_7_rU, INQ_8_rU, INQ_10_rU, INQ_13_rU, INQ_14_rU, INQ_15_rU
+  )
+
+# Make a folder to save the output
+if (!dir.exists("02_output")) {
+  dir.create("02_output")
+}
+```
+
+# Do the data follow a latent or network structure? 
+```{r latent v network}
+# Use the loadings comparison test
+INQ_LCT <- LCT(
+  Data2,
+  corr = "auto",
+  model = "glasso",
+  algorithm = "walktrap",
+  uni.method = "Louvain",
+  iter = 1000,
+  seed = 123456,
+  verbose = TRUE,
+)
+
+INQ_LCT
+```
+
+# Exploratory graph analysis with all 15 items
+```{r ega all}
+INQ_ega_1 <- EGA(
+  data = Data2,
+  corr = "auto",
+  model = "glasso",
+  algorithm = "walktrap",
+  uni.method = "louvain",
+  plot.EGA = TRUE,
+  verbose = TRUE,
+)
+
+# summary statistics for the network
+summary(INQ_ega_1)
+
+# Plot the EGA network with node sizes based on strength centrality
+plot(INQ_ega_1,
+  color.palette = c("#33FFFF", "#FF3399", "#FFCC99"),
+  node.size = colSums(INQ_ega_1$network)^2 * 16
+)
+
+# Bootstrap EGA with 1000 iterations
+INQ_boot_1 <- bootEGA(
+  data = Data2,
+  corr = "auto",
+  model = "glasso",
+  algorithm = "walktrap",
+  uni.method = "louvain",
+  verbose = TRUE,
+  iter = 1000,
+  seed = 123456
+)
+
+# Summary statistics about the bootstrap EGA
+summary(INQ_boot_1)
+
+# Plots comparing the data EGA against 1000 bootsrapping procedure
+INQ_compare <- compare.EGA.plots(INQ_ega_1, INQ_boot_1,
+  labels = c("Empirical", "Bootstrap")
+  # "empirical" the one generated from this dataset
+)
+
+# Dimension stability from the bootstrap EGA
+INQ_boot_dim_1 <- dimensionStability(INQ_boot_1)
+INQ_boot_dim_1$item.stability$item.stability$all.dimensions
+```
+
+# Exploratory graph analysis excluding items 9, 11, and 12
+To parallel the later random-intercept EGA excluding items 9, 11, and 12, also run a standard EGA excluding these items.
+```{r ega x91112}
+INQ_ega_2 <- EGA(
+  data = Data3,
+  corr = "auto",
+  model = "glasso",
+  algorithm = "walktrap",
+  uni.method = "louvain",
+  plot.EGA = TRUE,
+  verbose = TRUE,
+)
+
+# summary statistics for the network
+summary(INQ_ega_2)
+
+# Plot the EGA network with node sizes based on strength centrality
+plot(INQ_ega_2,
+  color.palette = c("#33FFFF", "#FF3399"),
+  node.size = colSums(INQ_ega_2$network)^2 * 16
+)
+
+# Bootstrap EGA with 1000 iterations
+INQ_boot_2 <- bootEGA(
+  data = Data3,
+  corr = "auto",
+  model = "glasso",
+  algorithm = "walktrap",
+  uni.method = "louvain",
+  verbose = TRUE,
+  iter = 1000,
+  seed = 123456
+)
+
+# Summary statistics about the bootstrap EGA
+summary(INQ_boot_2)
+
+# Plots comparing the data EGA against 1000 bootsrapping procedure
+INQ_compare <- compare.EGA.plots(INQ_ega_2, INQ_boot_2,
+  labels = c("Empirical", "Bootstrap")
+  # "empirical" the one generated from this dataset
+)
+
+# Dimension stability from the bootstrap EGA
+INQ_boot_dim_2 <- dimensionStability(INQ_boot_2)
+INQ_boot_dim_2$item.stability$item.stability$all.dimensions
+```
+
+# Make total scores from EGA-identified dimensions
+```{r total scores}
+Data1 <- Data1 %>%
+  mutate(
+    INQ_PB_sum = rowSums(select(., INQ_1:INQ_6), na.rm = TRUE),
+    INQ_TB_dimension1_sum = rowSums(select(., INQ_7_r, INQ_8_r, INQ_10_r, INQ_13_r, INQ_14_r, INQ_15_r), na.rm = TRUE),
+    INQ_TB_dimension2_sum = rowSums(select(., INQ_9, INQ_11, INQ_12), na.rm = TRUE)
+  )
+
+# Check intercorrelations
+# riEGA assumes orthogonality; correlations >.70 can mess up results
+
+# Between PB and the TB factor comprised of reverse scored items
+jmv::corrMatrix(
+  data = Data1,
+  vars = vars(INQ_TB_dimension1_sum, INQ_PB_sum),
+  flag = TRUE,
+  n = TRUE,
+  ci = TRUE,
+  plots = TRUE
+) # < .70
+
+# Between the regular TB factor and the TB factor comprised of reverse scored items
+jmv::corrMatrix(
+  data = Data1,
+  vars = vars(INQ_TB_dimension1_sum, INQ_TB_dimension2_sum),
+  flag = TRUE,
+  n = TRUE,
+  ci = TRUE,
+  plots = TRUE
+) # > .70
+
+# Do random-intercept EGA without items 9, 11, and 12
+```
+
+# Random-intercept exploratory graph analysis with all 15 items
+```{r riEGA all}
+riEGA_1 <- riEGA(
+  data = Data2,
+  algorithm = "walktrap",
+  uni.method = "Louvain",
+  plot.EGA = TRUE
+)
+
+plot(riEGA_1,
+  layout = "circle"
+)
+
+# Bootstrap the riEGA
+riEGAboot_1 <- bootEGA(
+  data = Data2,
+  corr = "auto",
+  na.data = "listwise",
+  model = "glasso",
+  algorithm = "walktrap",
+  uni.method = "louvain",
+  iter = 1000,
+  type = "parametric",
+  ncores = 4,
+  EGA.type = "riEGA",
+  typicalStructure = TRUE,
+  plot.typicalStructure = TRUE,
+  seed = 123456,
+  verbose = TRUE,
+)
+
+# Summary of bootstrappped riEGA
+summary(riEGAboot_1)
+
+# Item-dimension stability of riEGA
+riEGAbootdim1 <- dimensionStability(riEGAboot_1)
+
+# where is each item replicating
+dimensionStability(riEGAboot_1)
+riEGAbootdim1$item.stability$item.stability$all.dimensions
+```
+
+# Random-intercept exploratory graph analysis excluding 9, 11, and 12
+```{r riEGA x91112}
+riEGA_2 <- riEGA(
+  data = Data3,
+  algorithm = "walktrap",
+  uni.method = "Louvain",
+  plot.EGA = TRUE
+)
+
+plot(riEGA_2,
+  layout = "circle"
+)
+
+# Bootstrap the riEGA
+riEGAboot_2 <- bootEGA(
+  data = Data3,
+  corr = "auto",
+  na.data = "listwise",
+  model = "glasso",
+  algorithm = "walktrap",
+  uni.method = "louvain",
+  iter = 1000,
+  type = "parametric",
+  ncores = 4,
+  EGA.type = "riEGA",
+  typicalStructure = TRUE,
+  plot.typicalStructure = TRUE,
+  seed = 123456,
+  verbose = TRUE,
+)
+
+# Summary of bootstrappped riEGA
+summary(riEGAboot_2)
+
+# Item-dimension stability of riEGA
+riEGAbootdim1 <- dimensionStability(riEGAboot_2)
+
+# where is each item replicating
+dimensionStability(riEGAboot_2)
+riEGAbootdim1$item.stability$item.stability$all.dimensions
+```
+
+# Triangulated maximally filtered graph EGA
+```{r tmfg ega}
+# Fit EGA
+INQ_EGA_tmfg <- EGA(
+  data = Data2,
+  corr = "auto",
+  model = "TMFG",
+  algorithm = "walktrap",
+  uni.method = "expand",
+  plot.EGA = TRUE,
+  verbose = TRUE,
+)
+
+# Summary statistics
+summary(INQ_EGA_tmfg)
+```
+
+# Check the fit of 2- and 3-factor model (R&R) with confirmatory factor analysis
+Via the CFA function from  EGAnet, which takes the EGA object & fits the corresponding confirmatory factor model using lavaan
+Use the weighted least squares mean estimator (likert data/ordinal variables)
+```{r Check CFA fits of 3 and 2 factors}
+# With all 15 items, fit the 3-factor model
+cfa.ega.sds <- CFA(
+  ega.obj = INQ_ega_1,
+  data = Data2,
+  estimator = "WLSMV",
+  plot.CFA = TRUE
+)
+
+# Duplicate the EGA object
+INQ_ega_1_dup <- INQ_ega_1
+
+# Change the column names
+INQ_ega_1_dup$dim.variables[, 1] <- colnames(Data2)
+
+# Select the items that are part of Factor 1 (in the original INQ-15)
+INQ_ega_1_dup$dim.variables[c(1, 2, 3, 4, 5, 6), 2] <- rep(1, 6)
+
+# Select the items that are part of Factor 2 (in the original INQ-15)
+INQ_ega_1_dup$dim.variables[c(7, 8, 9, 10, 11, 12, 13, 14, 15), 2] <- rep(2, 9)
+
+# Fit the CFA model for the original 2-factor theory
+cfa.sds.theory <- CFA(
+  ega.obj = INQ_ega_1_dup,
+  estimator = "WLSMV",
+  plot.CFA = TRUE,
+  data = Data2
+)
+
+# Look at fit measures for both models
+three_factor_fit <- cfa.ega.sds$fit.measures
+two_factor_fit <- cfa.sds.theory$fit.measures
+
+three_factor_fit
+two_factor_fit
+```
+
+# Dimension reliability (R&R)
+```{r alpha}
+# EGA dimension #1
+ltm::cronbach.alpha(
+  Data1 %>%
+    dplyr::select(
+      INQ_1, INQ_2, INQ_3, INQ_4, INQ_5, INQ_6
+    ),
+  CI = TRUE,
+  na.rm = TRUE
+)
+
+# EGA dimension #2
+ltm::cronbach.alpha(
+  Data1 %>%
+    dplyr::select(
+      INQ_7_r, INQ_8_r, INQ_10_r, INQ_13_r, INQ_14_r, INQ_15_r
+    ),
+  CI = TRUE,
+  na.rm = TRUE
+)
+
+# EGA dimension #3
+ltm::cronbach.alpha(
+  Data1 %>%
+    dplyr::select(INQ_9, INQ_11, INQ_12),
+  CI = TRUE,
+  na.rm = TRUE
+)
+```
+
